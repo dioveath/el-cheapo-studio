@@ -1,11 +1,11 @@
-# Verification — 2026-11-13
+# Historical verification notes
 
-Historical results from a local test deployment. Referenced artifacts and job IDs belong to that test run; generated files are excluded from the repository.
+These notes record local test runs from November 13–14, 2026, including earlier UI and pipeline versions. Test counts, job IDs, and deployment descriptions refer to those runs. Generated artifacts are excluded from the repository. See [the guide](docs/guide.md#validation) for current validation commands.
 Hardware: NVIDIA RTX 5060, 8 GB VRAM. Shape weights remain on CUDA throughout inference.
 
 ## Production animation studio
 
-The Kimodo integration and full-screen workspace are deployed. All model weights stay on CUDA during inference; CPU geometry processing and Blender exports remain separate.
+This run tested the Kimodo integration and the earlier full-screen workspace. Model weights stayed on CUDA during inference; CPU geometry processing and Blender exports ran separately.
 
 - Production Docker builds and Next.js TypeScript checks passed.
 - **23 Python tests passed**, including process cancellation/reaping, native work draining, motion cache identity, invalid motion settings, geometry, imports, and reconstruction caching.

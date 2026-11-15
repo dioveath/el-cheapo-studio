@@ -3,7 +3,7 @@ Original project code: Copyright (c) 2026 Rai Saroj, licensed under MIT.
 
 Third-party model weights, software, and example images retain their own
 licenses. The project MIT license does not replace those terms. See the
-Model and source credits in README.md and the license copies in notices/.
+Model and source credits in docs/guide.md and the license copies in notices/.
 
 The images examples/character.png and examples/chair.png originate from
 the Stable Fast 3D demo files:
