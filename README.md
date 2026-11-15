@@ -1,8 +1,8 @@
-# Low Poly Studio
+# El Cheapo Studio
 
 Turn images into low-poly models, animate characters, and generate short videos locally.
 
-![Low Poly Studio animation workspace](docs/images/studio.png)
+![El Cheapo Studio animation workspace](docs/images/studio.png)
 
 | Input image | Generated mesh | Walking animation | Generated video |
 | :---: | :---: | :---: | :---: |

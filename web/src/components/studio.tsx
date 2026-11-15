@@ -421,12 +421,12 @@ export default function Studio() {
       }}
     >
       <header className="app-header surface">
-        <a className="brand" href="/" aria-label="Low Poly Studio">
+        <a className="brand" href="/" aria-label="El Cheapo Studio">
           <span className="brand-mark">
             <Box size={20} />
           </span>
           <span>
-            lowpoly<span className="brand-sub">STUDIO</span>
+            El Cheapo<span className="brand-sub">STUDIO</span>
           </span>
         </a>
         <nav className="segment mode-switch" aria-label="Workspace mode">

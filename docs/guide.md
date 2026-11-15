@@ -1,4 +1,4 @@
-# Low Poly Studio guide
+# El Cheapo Studio guide
 
 A local workspace for generating 3D assets, character animation, and video. Built with Next.js, FastAPI, Temporal, and Postgres. No accounts, API keys, or Hugging Face login required.
 

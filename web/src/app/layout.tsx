@@ -3,7 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "next-themes";
 
 export const metadata: Metadata = {
-  title: "Low Poly Studio",
+  title: "El Cheapo Studio",
   description:
     "Create 3D assets, animate characters, and generate videos in your local creative studio.",
 };

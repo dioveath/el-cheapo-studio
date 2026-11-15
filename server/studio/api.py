@@ -62,7 +62,7 @@ async def lifespan(app):
 
 
 app = FastAPI(
-    title="Low Poly Studio",
+    title="El Cheapo Studio",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
