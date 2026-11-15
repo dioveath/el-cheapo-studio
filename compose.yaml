@@ -1,0 +1,146 @@
+name: low-poly-studio
+
+x-app-environment: &app-environment
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see README.md)}
+  TEMPORAL_ADDRESS: temporal:7233
+  DATA_ROOT: /data
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see README.md)}
+      POSTGRES_DB: studio
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/databases.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U studio -d studio"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal-schema:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.temporal-init
+    environment:
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: studio
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see README.md)}
+    depends_on:
+      postgres: {condition: service_healthy}
+    volumes:
+      - ./infra/setup-temporal.sh:/scripts/setup-temporal.sh:ro
+    entrypoint: [sh, /scripts/setup-temporal.sh]
+
+  temporal:
+    image: temporalio/server:1.32.2
+    restart: unless-stopped
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: studio
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see README.md)}
+      POSTGRES_SEEDS: postgres
+      BIND_ON_IP: 0.0.0.0
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/studio.yaml
+    volumes:
+      - ./infra/dynamicconfig.yaml:/etc/temporal/config/dynamicconfig/studio.yaml:ro
+    depends_on:
+      temporal-schema: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, nc, -z, localhost, "7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  temporal-namespace:
+    image: temporalio/admin-tools:1.32.2
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    depends_on:
+      temporal: {condition: service_healthy}
+    volumes:
+      - ./infra/setup-namespace.sh:/scripts/setup-namespace.sh:ro
+    entrypoint: [sh, /scripts/setup-namespace.sh]
+    restart: on-failure:5
+
+  temporal-ui:
+    image: temporalio/ui:2.58.1
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "${STUDIO_BIND_ADDRESS:-127.0.0.1}:${TEMPORAL_UI_PORT:-8080}:8080"
+    depends_on:
+      temporal: {condition: service_healthy}
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment: *app-environment
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres: {condition: service_healthy}
+      temporal-namespace: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health').close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  worker:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.worker
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 2m
+    environment: *app-environment
+    volumes:
+      - ./data:/data
+      - model-cache:/root/.cache
+    depends_on:
+      server: {condition: service_healthy}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; assert Path('/tmp/worker-ready').exists()"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 15m
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${STUDIO_BIND_ADDRESS:-127.0.0.1}:${STUDIO_PORT:-3000}:3000"
+    depends_on:
+      server: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  model-cache:
+    name: ${HUNYUAN_CACHE_VOLUME:-low-poly-studio-model-cache}

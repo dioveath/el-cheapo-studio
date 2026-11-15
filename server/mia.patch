@@ -1,0 +1,80 @@
+--- a/util/dataset_mixamo.py
++++ b/util/dataset_mixamo.py
+@@ -1,3 +1,6 @@
++from __future__ import annotations
++
++import json
+ import os
+ import random
+ import sys
+@@ -23,8 +26,6 @@
+ 
+ if __name__ == "__main__":
+     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+-from util import blender_utils
+-from util.blender_utils import bpy as bpy
+ from util.utils import HiddenPrints, apply_transform, decompose_transform, quat_to_matrix, sample_mesh
+ 
+ MIXAMO_PREFIX = "mixamorig:"
+@@ -397,14 +398,16 @@
+ 
+ 
+ def get_kinematic_tree(bone_path: str, bone_idx_dict: dict[str, int]):
+-    assert os.path.isfile(bone_path), f"File not found: {bone_path}"
+-    with HiddenPrints():
+-        blender_utils.reset()
+-        kinematic_tree = build_skeleton(
+-            blender_utils.get_armature_obj(blender_utils.load_file(bone_path)), bone_idx_dict
+-        )
+-        blender_utils.reset()
+-    return kinematic_tree
++    with open(os.path.splitext(bone_path)[0] + ".json") as source:
++        parents = json.load(source)
++    names = tuple(bone_idx_dict)
++
++    def branch(name, parent=None):
++        joint = Joint(name, bone_idx_dict[name], parent, [], names)
++        joint.children.extend(branch(child, joint) for child in names if parents[child] == name)
++        return joint
++
++    return branch(next(name for name in names if parents[name] not in bone_idx_dict))
+ 
+ 
+ TEMPLATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/Mixamo/bones.fbx"))
+@@ -734,6 +737,8 @@
+     char_id: str,
+ ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, int], Joint]:
+     """char_id: required for cache"""
++    from util import blender_utils
++
+     armature_list = blender_utils.get_all_armature_obj()
+     assert len(armature_list) == 1, f"Armature number is not 1: {armature_list}"
+     armature_obj = armature_list[0]
+@@ -796,6 +801,9 @@
+         If `None` in list, replace them with random valid frames; \
+         If `-1` in list, use the canonical frame.
+     """
++    from util import blender_utils
++    from util.blender_utils import bpy
++
+     char_id = os.path.splitext(os.path.basename(char_path))[0]
+     with HiddenPrints(enable=not verbose):
+         # blender_utils.reset()
+@@ -984,6 +992,8 @@
+                 assert len(extra_anim_list) > 0, f"No extra animation found in {extra_dir}"
+                 self.animation_list.extend(extra_anim_list)
+ 
++        from util import blender_utils
++
+         self.load_fn = blender_utils.load_mixamo_anim
+         self.bones_idx_dict = OrderedDict(bones_idx_dict)
+ 
+@@ -1147,6 +1157,8 @@
+ 
+ 
+ def seed_worker(worker_id: int):
++    from util import blender_utils
++
+     worker_seed = torch.initial_seed() % 2**32
+     np.random.seed(worker_seed)
+     random.seed(worker_seed)

@@ -1,0 +1,77 @@
+FROM ghcr.io/pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel AS motion
+ARG KIMODO_COMMIT=e1c219c99b4b94ba48be1fb6a1cbc64ecee4c954
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/root/.cache/huggingface TOKENIZERS_PARALLELISM=false
+RUN apt-get update && apt-get install -y --no-install-recommends cmake build-essential libeigen3-dev && rm -rf /var/lib/apt/lists/*
+RUN python -m venv --system-site-packages /opt/kimodo
+ENV PATH=/opt/kimodo/bin:$PATH
+WORKDIR /tmp/kimodo
+RUN python - <<'PY'
+import io
+import os
+import shutil
+import tarfile
+import urllib.request
+
+revision = os.environ["KIMODO_COMMIT"]
+with urllib.request.urlopen("https://codeload.github.com/nv-tlabs/kimodo/tar.gz/" + revision, timeout=120) as response:
+    data = response.read()
+tarfile.open(fileobj=io.BytesIO(data)).extractall("/tmp", filter="data")
+shutil.copytree("/tmp/kimodo-" + revision, ".", dirs_exist_ok=True)
+shutil.rmtree("/tmp/kimodo-" + revision)
+PY
+RUN ln -sf /usr/bin/cmake /opt/conda/bin/cmake \
+    && pip install pybind11==2.11.1 \
+    && printf 'torch==2.7.1\ntorchvision==0.22.1\ntorchaudio==2.7.1\n' > /tmp/constraints.txt \
+    && CMAKE_PREFIX_PATH=/opt/kimodo/lib/python3.11/site-packages/pybind11/share/cmake \
+       pip install -c /tmp/constraints.txt . transformers==5.1.0 bitsandbytes==0.49.2 accelerate==1.12.0 peft==0.18.1 \
+    && pip check
+
+FROM ghcr.io/pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel AS video
+ARG COMFY_COMMIT=eee59185ff4f43ae2d9ad122b245619d27d9daad
+ARG GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
+ENV PIP_NO_CACHE_DIR=1
+RUN python -m venv --system-site-packages /opt/ltx
+COPY server/requirements-video.txt /tmp/requirements-video.txt
+RUN /opt/ltx/bin/pip install -r /tmp/requirements-video.txt && /opt/ltx/bin/pip check
+RUN python - <<'PY'
+import io, os, pathlib, shutil, tarfile, urllib.request
+for repo, revision, destination in [
+    ('Comfy-Org/ComfyUI', os.environ['COMFY_COMMIT'], '/opt/comfyui'),
+    ('city96/ComfyUI-GGUF', os.environ['GGUF_COMMIT'], '/opt/comfyui/custom_nodes/ComfyUI-GGUF'),
+]:
+    with urllib.request.urlopen(f'https://codeload.github.com/{repo}/tar.gz/{revision}', timeout=120) as response:
+        archive = tarfile.open(fileobj=io.BytesIO(response.read()))
+    archive.extractall('/tmp/sources', filter='data')
+    source = pathlib.Path('/tmp/sources') / archive.getnames()[0].split('/')[0]
+    shutil.copytree(source, destination, dirs_exist_ok=True)
+    shutil.rmtree('/tmp/sources')
+PY
+
+FROM ghcr.io/pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel
+ARG HUNYUAN_COMMIT=f8db63096c8282cb27354314d896feba5ba6ff8a
+ARG MIA_COMMIT=8fb51382ff6da556cdb95cc03a48200603f3a493
+ARG PYTORCH3D_COMMIT=75ebeeaea0908c5527e7b1e305fbc7681382db47
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app:/opt/hunyuan3d:/opt/mia HF_HOME=/root/.cache/huggingface \
+    U2NET_HOME=/root/.cache/u2net
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates libgl1 libglu1-mesa libglib2.0-0 libgomp1 libxrender1 libxi6 libxfixes3 libxkbcommon0 libsm6 libxxf86vm1 && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/hunyuan3d
+RUN git init . && git remote add origin https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git && git fetch --depth 1 origin "${HUNYUAN_COMMIT}" && git checkout --detach FETCH_HEAD
+WORKDIR /opt/mia
+RUN git init . && git remote add origin https://github.com/jasongzy/Make-It-Animatable.git && git fetch --depth 1 origin "${MIA_COMMIT}" && git checkout --detach FETCH_HEAD
+WORKDIR /app
+COPY server/requirements.txt server/requirements-gpu.txt ./
+RUN pip install -r requirements.txt -r requirements-gpu.txt
+RUN PYTORCH3D_NO_EXTENSION=1 pip install --no-build-isolation "git+https://github.com/facebookresearch/pytorch3d.git@${PYTORCH3D_COMMIT}"
+RUN pip check
+ENV PYTHONPATH=/app:/opt/hunyuan3d:/opt/mia:/opt/conda/lib/python3.11/site-packages
+ADD --checksum=sha256:b9ee313018de52697eeabcb76fc2cd6d404dbb670be9b0d3a5847a09ca325981 https://download.blender.org/release/Blender4.2/blender-4.2.21-linux-x64.tar.xz /tmp/blender.tar.xz
+RUN python -c "import os,tarfile; tarfile.open('/tmp/blender.tar.xz').extractall('/opt', filter='data'); os.rename('/opt/blender-4.2.21-linux-x64','/opt/blender'); os.unlink('/tmp/blender.tar.xz')"
+COPY --from=motion /opt/kimodo /opt/kimodo
+COPY --from=video /opt/ltx /opt/ltx
+COPY --from=video /opt/comfyui /opt/comfyui
+COPY server/ ./
+RUN git -C /opt/mia apply /app/mia.patch
+RUN /opt/blender/blender --background --python-use-system-env --python-exit-code 1 --python /app/studio/pipeline/rigging.py -- template
+CMD ["python", "-m", "studio.worker"]

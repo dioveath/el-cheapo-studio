@@ -1,0 +1,14 @@
+Low Poly Studio
+Original project code: Copyright (c) 2026 Rai Saroj, licensed under MIT.
+
+Third-party model weights, software, and example images retain their own
+licenses. The project MIT license does not replace those terms. See the
+Model and source credits in README.md and the license copies in notices/.
+
+The images examples/character.png and examples/chair.png originate from
+the Stable Fast 3D demo files:
+https://github.com/Stability-AI/stable-fast-3d/tree/main/demo_files/examples
+They are distributed under the included Stability AI Community License.
+This Stability AI Model is licensed under the Stability AI Community License,
+Copyright © Stability AI Ltd. All Rights Reserved
+Powered by Stability AI (example images only).
